@@ -1,0 +1,11 @@
+{
+  "API-301": [
+    "tests/grading/pagination_test.go"
+  ],
+  "API-315": [
+    "tests/grading/auth_expiry_test.go"
+  ],
+  "API-322": [
+    "tests/grading/rate_limit_test.go"
+  ]
+}

@@ -1,0 +1,71 @@
+name: grade
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Restore grading config + tests from base (tamper-proof)
+        run: git checkout origin/${{ github.base_ref }} -- tests/grading go.mod .github/grading-map.json
+      # Scope the run to the ticket this PR is for.
+      #
+      # Every seeded defect is planted at provision time, so an unscoped run
+      # fails on the OTHER tickets' bugs — which meant a correct day-1 PR showed
+      # a red check. Mirrors the platform's own grader, which removes the
+      # sibling grading files and runs the suite unchanged (works for Go, where
+      # per-file test selection has no clean flag).
+      #
+      # PR title/body are attacker-controlled, so they are passed through env
+      # rather than interpolated into the script.
+      - name: Scope grading to this PR's ticket
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          MAP=.github/grading-map.json
+          ticket=""
+          # Branch first, then title, then body — the branch is the least
+          # likely to mention a ticket the PR is not actually for.
+          for source in "$HEAD_REF" "$PR_TITLE" "$PR_BODY"; do
+            up=$(printf '%s' "$source" | tr '[:lower:]' '[:upper:]')
+            for id in $(jq -r 'keys[]' "$MAP"); do
+              case "$up" in *"$id"*) ticket="$id"; break 2 ;; esac
+            done
+          done
+
+          if [ -z "$ticket" ]; then
+            {
+              echo "### Grading ran UNSCOPED"
+              echo
+              echo "No ticket id was found in the branch name, PR title or body, so"
+              echo "every grading test ran — including the ones for tickets you have"
+              echo "not been assigned yet. Those still fail by design."
+              echo
+              echo "Name your branch or PR after the ticket (e.g. \`ECOM-114-fix-coupon\`)"
+              echo "and this check will grade only that ticket."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq -r --arg t "$ticket" 'to_entries[] | select(.key != $t) | .value[]' "$MAP" \
+            | while read -r f; do rm -f "$f"; done
+
+          {
+            echo "### Grading scoped to $ticket"
+            echo
+            echo "Other tickets' grading tests were removed for this run — their bugs"
+            echo "are still planted and are not yours to fix yet."
+            echo
+            echo "Running:"
+            jq -r --arg t "$ticket" '.[$t][] | "- \(.)"' "$MAP"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - run: go mod download
+      - name: Run grading suite
+        run: go test ./tests/grading/...

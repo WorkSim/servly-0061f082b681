@@ -1,0 +1,15 @@
+// Lets a player work this sprint entirely in the browser, through GitHub
+// Codespaces, with the stack's toolchain already installed.
+//
+// Grading always runs in WorkSim's own sandbox, never here, so this is not
+// what makes a submission gradeable. It exists so a player can run the suite
+// BEFORE opening the PR. Without it, anyone without a local toolchain codes
+// blind, fails more first passes, and is scored lower for it.
+//
+// Run the suite in the Codespace terminal with:
+//   go test ./...
+{
+  "name": "WorkSim: Servly (Go)",
+  "image": "mcr.microsoft.com/devcontainers/go:1.25",
+  "postCreateCommand": "go mod download"
+}
